@@ -110,32 +110,221 @@ python test_evals.py
 
 ## 🏗️ Architecture
 
+### System Overview
+
+The Voice Travel Agent is built on a modular architecture with the **LangGraph Agent** at its core, orchestrating multiple specialized services through the **MCP (Model Context Protocol)** framework.
+
 ```
-┌─────────────┐
-│   Browser   │
-│  (WebSocket)│
-└──────┬──────┘
-       │
-┌──────▼──────────────────┐
-│   FastAPI Server        │
-│   - WebSocket Handler   │
-│   - STT/TTS Services    │
-│   - Email API           │
-└──────┬──────────────────┘
-       │
-┌──────▼──────────────────┐
-│   LangGraph Agent       │
-│   - Conversation Flow   │
-│   - State Management    │
-└──────┬──────────────────┘
-       │
-┌──────▼──────────────────┐
-│   MCP Tools (Parallel)  │
-│   - POI Search          │
-│   - Weather API         │
-│   - Travel Guides (RAG) │
-└─────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           USER INTERACTION LAYER                           │
+└────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                    ┌─────────────────┴─────────────────┐
+                    │                                   │
+         ┌──────────▼──────────┐           ┌───────────▼──────────┐
+         │   Browser (WebUI)   │           │   CLI Interface      │
+         │   - WebSocket       │           │   - Direct REPL      │
+         │   - Real-time UI    │           │   - Text-based       │
+         └──────────┬──────────┘           └───────────┬──────────┘
+                    │                                   │
+                    └─────────────────┬─────────────────┘
+                                      │
+┌────────────────────────────────────────────────────────────────────────────┐
+│                          VOICE PROCESSING LAYER                            │
+│                                                                            │
+│   ┌─────────────────────┐                    ┌─────────────────────┐     │
+│   │   STT Service       │                    │   TTS Service       │     │
+│   │   (ElevenLabs)      │                    │   (ElevenLabs)      │     │
+│   │                     │                    │                     │     │
+│   │  Audio → Text       │                    │  Text → Audio       │     │
+│   └──────────┬──────────┘                    └──────────▲──────────┘     │
+│              │                                           │                │
+└──────────────┼───────────────────────────────────────────┼────────────────┘
+               │                                           │
+               │  Transcribed Text                         │  Response Text
+               │                                           │
+┌──────────────▼───────────────────────────────────────────┴────────────────┐
+│                         FASTAPI SERVER LAYER                              │
+│                                                                            │
+│   ┌────────────────────────────────────────────────────────────────┐     │
+│   │              WebSocket Handler / Session Manager              │     │
+│   │  - Manages voice sessions                                      │     │
+│   │  - Routes audio/text between voice services and agent          │     │
+│   │  - Handles email delivery                                      │     │
+│   └────────────────────────────┬───────────────────────────────────┘     │
+│                                │                                          │
+└────────────────────────────────┼──────────────────────────────────────────┘
+                                 │
+                                 │  User Messages
+                                 │
+┌────────────────────────────────▼──────────────────────────────────────────┐
+│                          AGENT ORCHESTRATION LAYER                        │
+│                                                                            │
+│   ┌────────────────────────────────────────────────────────────────┐     │
+│   │                    Agent Factory                               │     │
+│   │  - Singleton pattern for agent lifecycle                       │     │
+│   │  - Initializes MCP clients and tools                           │     │
+│   │  - Manages checkpointer for conversation persistence           │     │
+│   └────────────────────────────┬───────────────────────────────────┘     │
+│                                │                                          │
+│   ┌────────────────────────────▼───────────────────────────────────┐     │
+│   │              Evaluated Agent Wrapper                           │     │
+│   │  - Wraps base agent with evaluation capabilities               │     │
+│   │  - Tracks tool calls and search results                        │     │
+│   │  - Triggers evaluations on itinerary generation                │     │
+│   └────────────────────────────┬───────────────────────────────────┘     │
+│                                │                                          │
+│   ┌────────────────────────────▼───────────────────────────────────┐     │
+│   │              LangGraph Agent (Core)                            │     │
+│   │                                                                 │     │
+│   │  ┌─────────────────────────────────────────────────────┐       │     │
+│   │  │  State Graph with Memory (MemorySaver)             │       │     │
+│   │  │  - Multi-turn conversation management              │       │     │
+│   │  │  - Phase-aware prompting (Clarifying/Planning)     │       │     │
+│   │  │  - Tool orchestration with parallel execution      │       │     │
+│   │  └─────────────────────────────────────────────────────┘       │     │
+│   │                                                                 │     │
+│   │  Uses: ChatGroq (qwen/qwen3-32b) with tool binding             │     │
+│   └────────────────────────────┬───────────────────────────────────┘     │
+│                                │                                          │
+└────────────────────────────────┼──────────────────────────────────────────┘
+                                 │
+                    Tool Calls & Results
+                                 │
+        ┌────────────────────────┼────────────────────────┐
+        │                        │                        │
+        │                        │                        │
+┌───────▼────────┐    ┌──────────▼──────────┐    ┌──────▼───────────┐
+│  MCP Server    │    │   MCP Server        │    │   MCP Server     │
+│  (POI Search)  │    │   (Itinerary)       │    │   (Weather)      │
+│                │    │                     │    │                  │
+│  Tools:        │    │  Tools:             │    │  Tools:          │
+│  - search_     │    │  - estimate_        │    │  - get_forecast  │
+│    places      │    │    travel_time      │    │                  │
+│                │    │                     │    │  External API:   │
+│  External:     │    │  External API:      │    │  - Open-Meteo    │
+│  - Foursquare  │    │  - OSRM Routing     │    │                  │
+│  - OpenStreet  │    │                     │    │                  │
+│    Map         │    │                     │    │                  │
+└────────────────┘    └─────────────────────┘    └──────────────────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    │                         │
+           ┌────────▼────────┐       ┌────────▼─────────┐
+           │  RAG Tool       │       │  Evaluation      │
+           │  (Wikivoyage)   │       │  System          │
+           │                 │       │                  │
+           │  Components:    │       │  Evaluators:     │
+           │  - Sentence     │       │  - Feasibility   │
+           │    Transformer  │       │  - Grounding     │
+           │  - Pinecone     │       │  - Edit          │
+           │    Vector DB    │       │    Correctness   │
+           │  - Lazy Loading │       │                  │
+           │                 │       │  Output:         │
+           │  Returns:       │       │  - evaluation_   │
+           │  - Travel tips  │       │    results.json  │
+           │  - Cultural     │       │                  │
+           │    context      │       │                  │
+           │  - Safety info  │       │                  │
+           └─────────────────┘       └──────────────────┘
 ```
+
+### Component Details
+
+#### 1. **Central Agent (LangGraph)**
+- **Location**: `app/agent/graph.py`
+- **Purpose**: Orchestrates the entire conversation flow and tool execution
+- **Key Features**:
+  - State-based workflow management
+  - Multi-turn conversation with memory persistence
+  - Parallel tool execution (disabled for reduced iterations)
+  - Phase-aware prompting (Clarifying → Planning → Reviewing)
+  - Tool binding with ChatGroq LLM
+
+#### 2. **MCP Servers (Model Context Protocol)**
+MCP servers run as separate processes, communicating via stdio:
+
+**POI Search Server** (`app/mcp_servers/poi_search.py`)
+- Searches for points of interest using Foursquare and OpenStreetMap
+- Geocodes cities using Nominatim
+- Returns structured POI data (name, rating, location)
+
+**Itinerary Server** (`app/mcp_servers/itinerary.py`)
+- Estimates travel time between coordinates
+- Uses OSRM (Open Source Routing Machine)
+- Supports driving and walking modes
+
+**Weather Server** (`app/mcp_servers/weather.py`)
+- Fetches weather forecasts
+- Uses Open-Meteo API
+- Provides temperature, conditions, precipitation
+
+#### 3. **RAG System (Retrieval-Augmented Generation)**
+- **Location**: `app/rag/`
+- **Purpose**: Provides contextual travel information
+- **Components**:
+  - **Embeddings**: Sentence Transformers (all-MiniLM-L6-v2)
+  - **Vector Store**: Pinecone for similarity search
+  - **Data Source**: Wikivoyage travel guides
+  - **Lazy Loading**: Models load on first use to speed up server startup
+- **Returns**: Relevant travel tips, cultural context, safety information
+
+#### 4. **Voice Services**
+**STT (Speech-to-Text)** (`app/voice/stt_service.py`)
+- ElevenLabs Conversational AI API
+- Converts audio chunks to text in real-time
+- Handles audio buffering and streaming
+
+**TTS (Text-to-Speech)** (`app/voice/tts_service.py`)
+- ElevenLabs TTS API
+- Converts agent responses to natural speech
+- Streams audio back to client
+- Configurable voice (default: Bella - warm, friendly)
+
+#### 5. **Evaluation System**
+- **Location**: `app/evals/`
+- **Purpose**: Quality assurance for generated itineraries
+- **Triggers**: Automatically runs after itinerary creation/editing
+- **Components**:
+  - **Feasibility Evaluator**: Validates time constraints and pacing
+  - **Grounding Evaluator**: Checks POI authenticity and source citations
+  - **Edit Correctness Evaluator**: Ensures edits only modify intended sections
+- **Output**: `evaluation_results.json` with detailed pass/fail results
+
+### Data Flow
+
+#### Itinerary Generation Flow
+```
+1. User speaks → STT converts to text
+2. Text sent to Agent via WebSocket
+3. Agent (LangGraph) processes request:
+   a. Determines conversation phase
+   b. Calls tools in parallel:
+      - search_places (POI Server)
+      - retrieve_travel_guides (RAG)
+      - get_forecast (Weather Server)
+   c. Synthesizes results into itinerary
+4. Evaluation system validates itinerary
+5. Response text → TTS converts to audio
+6. Audio streamed back to user
+7. Results saved to evaluation_results.json
+```
+
+#### Tool Execution Flow
+```
+Agent → MCP Client Manager → MCP Server (stdio) → External API
+                                         ↓
+                          Results ← Tool Response
+```
+
+### Key Design Patterns
+
+1. **Singleton Pattern**: AgentFactory ensures single agent instance
+2. **Wrapper Pattern**: EvaluatedAgentWrapper adds evaluations without modifying core
+3. **Factory Pattern**: MCP servers created and managed by MCPClientManager
+4. **Lazy Loading**: RAG models and embeddings load on first use
+5. **Parallel Execution**: MCP servers connect in parallel for faster startup
+6. **State Management**: LangGraph with MemorySaver for conversation persistence
 
 ---
 
