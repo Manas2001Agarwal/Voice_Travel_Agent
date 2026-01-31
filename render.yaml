@@ -43,7 +43,7 @@ services:
     # Instance configuration
     # Free tier: Use 'free' plan
     # Production: Use 'starter' ($7/mo) or 'standard' ($25/mo)
-    plan: starter
+    plan: free
 
     # Region (choose closest to your users)
     region: oregon  # Options: oregon, frankfurt, singapore
