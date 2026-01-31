@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # LangSmith Settings
+    langsmith_tracing: str = "true"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_api_key: str = ""
+    langsmith_project: str = "voice_agent"
+
     class Config:
         env_file = ".env"
         case_sensitive = False

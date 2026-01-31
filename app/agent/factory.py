@@ -72,9 +72,14 @@ class AgentFactory:
         # Create checkpointer for conversation persistence
         cls._checkpointer = MemorySaver()
 
-        # Create agent
-        cls._agent = create_agent_graph(tools, checkpointer=cls._checkpointer)
-        logger.info("Agent initialized successfully")
+        # Create base agent
+        base_agent = create_agent_graph(tools, checkpointer=cls._checkpointer)
+
+        # Wrap with evaluations (doesn't change functionality, just adds background evaluations)
+        from app.agent.evaluated_agent import EvaluatedAgentWrapper
+        cls._agent = EvaluatedAgentWrapper(base_agent)
+
+        logger.info("Agent initialized successfully (with evaluations)")
 
         return cls._agent
 

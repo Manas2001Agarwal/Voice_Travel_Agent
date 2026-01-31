@@ -13,7 +13,14 @@ from langgraph.checkpoint.memory import MemorySaver
 
 async def main():
     print("Initializing Voice Travel Agent...")
-    
+
+    # Log LangSmith configuration
+    import os
+    if os.getenv("LANGSMITH_TRACING", "").lower() == "true":
+        print(f"LangSmith tracing: ENABLED (Project: {os.getenv('LANGSMITH_PROJECT', 'default')})")
+    else:
+        print("LangSmith tracing: DISABLED")
+
     # 1. Setup MCP Clients
     mcp_manager = MCPClientManager()
     
@@ -49,11 +56,15 @@ async def main():
         # Note: create_agent_graph needs modification to accept checkpointer or we act differently?
         # create_react_agent accepts checkpointer. StateGraph.compile(checkpointer=...)
         # I need to modify create_agent_graph in app/agent/graph.py too.
-        
+
         # Let's import the builder and compile here or modify the function.
         # I'll let create_agent_graph take an optional checkpointer.
         from app.agent.graph import create_agent_graph
-        agent = create_agent_graph(tools, checkpointer=checkpointer)
+        base_agent = create_agent_graph(tools, checkpointer=checkpointer)
+
+        # Wrap agent with evaluations (doesn't change functionality)
+        from app.agent.evaluated_agent import EvaluatedAgentWrapper
+        agent = EvaluatedAgentWrapper(base_agent)
         
         # 4. Chat Loop
         print("\n--- Travel Agent Ready (Type 'quit' to exit) ---\n")

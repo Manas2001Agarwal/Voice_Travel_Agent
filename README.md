@@ -36,6 +36,78 @@ An AI-powered voice travel planning assistant that creates personalized itinerar
 
 ---
 
+## 🔍 AI Evaluations
+
+The Voice Travel Agent includes three comprehensive AI evaluation systems that automatically validate itinerary quality:
+
+### 1. **Feasibility Evaluation** ✅
+Ensures itineraries are practical and achievable:
+- **Daily Duration ≤ Available Time**: Activities fit within time windows (Morning: 3h, Afternoon: 3h, Evening: 4h)
+- **Reasonable Travel Times**: Validates travel between activities (<60 minutes recommended)
+- **Pace Consistency**: Balanced activity distribution (ideal: ≤6 activities/day)
+
+### 2. **Edit Correctness Evaluation** ✅
+Ensures voice edits are accurate:
+- **Intended Changes Only**: Edits modify only requested sections
+- **No Unintended Changes**: Detects modifications outside edit scope
+- **Smart Detection**: Infers intended sections from natural language instructions
+
+### 3. **Grounding & Hallucination Evaluation** ✅
+Verifies information authenticity:
+- **POI Grounding**: ≥70% of POIs match search results (Foursquare/OpenStreetMap)
+- **Source Citations**: ≥50% of tips cite RAG sources `[Source: Wikivoyage...]`
+- **Explicit Uncertainty**: Validates uncertainty markers for missing data
+
+### How It Works
+
+Evaluations run automatically in the background whenever itineraries are created or edited:
+
+```
+Agent Creates Itinerary
+    ↓
+Evaluations Run in Background
+    ├─ Feasibility (duration, travel, pace)
+    ├─ Grounding (POIs, citations, uncertainty)
+    └─ Edit Correctness (if editing)
+    ↓
+Results Saved to evaluation_results.json
+```
+
+### Usage
+
+```python
+from app.evals import EvaluationRunner
+
+runner = EvaluationRunner()
+
+# Run all evaluations
+results = runner.run_all_evals(
+    itinerary_text=itinerary,
+    context={
+        "search_results": search_results,
+        "travel_times": travel_times
+    }
+)
+
+# Check results
+if results["overall"]["all_passed"]:
+    print("✓ All evaluations passed!")
+```
+
+### View Results
+
+```bash
+# Check latest evaluation results
+cat evaluation_results.json | python -m json.tool
+
+# Run standalone test
+python test_evals.py
+```
+
+**See [app/evals/README.md](app/evals/README.md) for complete documentation.**
+
+---
+
 ## 🏗️ Architecture
 
 ```
@@ -330,26 +402,36 @@ WS /ws/voice
 ```
 voice_agent/
 ├── app/
-│   ├── agent/           # LangGraph agent & MCP tools
-│   │   ├── factory.py   # Agent factory (parallelized)
-│   │   ├── graph.py     # LangGraph workflow
-│   │   └── prompts.py   # Phase-specific prompts
-│   ├── mcp_servers/     # MCP tool servers
+│   ├── agent/              # LangGraph agent & MCP tools
+│   │   ├── factory.py      # Agent factory (parallelized)
+│   │   ├── graph.py        # LangGraph workflow
+│   │   ├── evaluated_agent.py  # Evaluation wrapper
+│   │   └── prompts.py      # Phase-specific prompts
+│   ├── evals/              # AI Evaluation System
+│   │   ├── feasibility.py  # Feasibility checks
+│   │   ├── edit_correctness.py  # Edit validation
+│   │   ├── grounding.py    # Grounding & hallucination checks
+│   │   ├── runner.py       # Evaluation orchestrator
+│   │   └── README.md       # Full documentation
+│   ├── mcp_servers/        # MCP tool servers
 │   │   ├── poi_search.py
 │   │   ├── weather.py
 │   │   └── itinerary.py
-│   ├── rag/             # Retrieval-Augmented Generation
-│   │   ├── retrieve.py  # Lazy-loaded embeddings
-│   │   └── client.py    # Pinecone client
-│   ├── voice/           # Voice services
+│   ├── rag/                # Retrieval-Augmented Generation
+│   │   ├── retrieve.py     # Lazy-loaded embeddings
+│   │   └── client.py       # Pinecone client
+│   ├── voice/              # Voice services
 │   │   ├── stt_service.py
 │   │   ├── tts_service.py
 │   │   └── websocket_handler.py
-│   ├── static/          # Frontend
+│   ├── static/             # Frontend
 │   │   ├── index.html
 │   │   ├── app.js
 │   │   └── styles.css
-│   └── server.py        # FastAPI server
+│   └── server.py           # FastAPI server
+├── test_evals.py           # Evaluation tests
+├── test_integration.py     # Integration tests
+├── evaluation_results.json # Auto-generated evaluation results
 ├── Dockerfile
 ├── requirements.txt
 ├── render.yaml

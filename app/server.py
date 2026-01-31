@@ -66,6 +66,12 @@ async def startup_event():
     logger.info(f"Voice: {settings.elevenlabs_voice_id}")
     logger.info(f"Model: {settings.elevenlabs_model_id}")
 
+    # Log LangSmith configuration
+    if settings.langsmith_tracing.lower() == "true":
+        logger.info(f"LangSmith tracing: ENABLED (Project: {settings.langsmith_project})")
+    else:
+        logger.info("LangSmith tracing: DISABLED")
+
     # Initialize services
     logger.info("Initializing STT service...")
     stt_service = STTService(api_key=settings.elevenlabs_api_key)
